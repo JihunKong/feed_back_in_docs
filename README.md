@@ -6,7 +6,7 @@ Google Docs 문서에 AI가 댓글로 상세한 피드백을 제공하는 시스
 
 - Google Docs 문서 읽기 및 분석
 - 전체 문서 구조 파악 및 섹션별 분석
-- Claude AI를 활용한 지능적인 피드백
+- OpenAI GPT-4o-mini를 활용한 지능적인 피드백
 - 문서 타입별 맞춤형 피드백
 - Google Docs에 직접 댓글 추가
 
@@ -32,7 +32,7 @@ streamlit run app.py
 
 ```toml
 # Streamlit Cloud secrets.toml
-ANTHROPIC_API_KEY = "your-anthropic-api-key"
+OPENAI_API_KEY = "your-openai-api-key"
 
 [google_service_account]
 type = "service_account"
@@ -70,6 +70,7 @@ universe_domain = "googleapis.com"
 - **전체 문서 분석**: 문단별이 아닌 전체 문서를 분석하여 섹션별 피드백 제공
 - **스마트 섹션 식별**: 문서 구조를 자동으로 파악하여 주요 섹션에만 피드백
 - **Streamlit Cloud 최적화**: secrets.toml을 통한 간편한 배포
+- **GPT-4o-mini 모델 사용**: 빠르고 효율적인 AI 피드백
 
 ## 주의사항
 

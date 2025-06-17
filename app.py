@@ -1,12 +1,10 @@
 import streamlit as st
-import anthropic
+import openai
 import re
 import time
 import os
-import json
 from googleapiclient.discovery import build
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials
 from googleapiclient.errors import HttpError
 
 # 페이지 설정
@@ -358,17 +356,15 @@ FEEDBACK_FOCUS = {
 with st.sidebar:
     st.markdown("### ⚙️ 설정")
     
-    # API 키 입력 (환경변수 우선, Streamlit secrets 폴백)
-    api_key = os.getenv("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY")
+    # API 키 입력 (Streamlit secrets 우선)
+    api_key = st.secrets.get("OPENAI_API_KEY", "")
     
     if not api_key:
-        api_key = st.text_input("Anthropic API Key", type="password", help="Claude API 키를 입력하세요")
+        api_key = st.text_input("OpenAI API Key", type="password", help="OpenAI API 키를 입력하세요")
     
-    model_choice = st.selectbox(
-        "AI 모델 선택",
-        ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229"],
-        help="사용할 Claude 모델을 선택하세요"
-    )
+    # GPT-4o-mini 모델 고정
+    model_choice = "gpt-4o-mini"
+    st.info(f"🤖 사용 모델: {model_choice}")
     
     st.markdown("---")
     
@@ -398,16 +394,12 @@ with st.sidebar:
     
     # API 키 상태
     if api_key:
-        st.success("✅ Anthropic API 연결됨")
+        st.success("✅ OpenAI API 연결됨")
     else:
         st.warning("⚠️ API 키 필요")
     
     # Google 서비스 상태
-    google_creds_available = (
-        os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or 
-        st.secrets.get("google_service_account")
-    )
-    if google_creds_available:
+    if "google_service_account" in st.secrets:
         st.success("✅ Google API 연결됨")
     else:
         st.warning("⚠️ Google 인증 필요")
@@ -432,7 +424,9 @@ doc_url = st.text_input(
 # 예시 문서 정보
 with st.expander("💡 테스트용 예시 문서"):
     st.markdown("""
-    테스트를 위한 예시 문서 ID: `1Rvy50HKV7Mzs9rcYGtGZvzekMl7SV8cfbnpT33a0wVo`
+    테스트를 위한 예시 문서: 
+    
+    https://docs.google.com/document/d/1DMTbJjOafh-guixzR6uagAWNwOhM1oAI0M_QMPwWpFM/edit?tab=t.0#heading=h.2lzghcnx3r3a
     
     **주의:** 이 문서에 편집자 권한을 부여해야 댓글 기능이 작동합니다.
     """)
@@ -470,7 +464,8 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                     # 전체 문서 분석
                     with st.spinner("🤖 전체 문서를 분석하고 있습니다..."):
                         try:
-                            client = anthropic.Anthropic(api_key=api_key)
+                            # OpenAI 클라이언트 설정
+                            openai.api_key = api_key
                             
                             # 전체 문서에 대한 분석 요청
                             analysis_prompt = f"""
@@ -493,17 +488,20 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                             각 항목에 대해 구체적이고 건설적인 피드백을 한국어로 작성해주세요.
                             """
                             
-                            analysis_message = client.messages.create(
+                            response = openai.ChatCompletion.create(
                                 model=model_choice,
-                                max_tokens=2000,
-                                temperature=0.7,
                                 messages=[{
+                                    "role": "system",
+                                    "content": "당신은 전문적인 문서 분석가입니다. 구체적이고 건설적인 피드백을 제공합니다."
+                                }, {
                                     "role": "user",
                                     "content": analysis_prompt
-                                }]
+                                }],
+                                max_tokens=2000,
+                                temperature=0.7
                             )
                             
-                            full_analysis = analysis_message.content[0].text
+                            full_analysis = response.choices[0].message.content
                             
                         except Exception as e:
                             st.error(f"문서 분석 중 오류 발생: {str(e)}")
@@ -543,17 +541,20 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                             개선 방향이나 구체적인 예시를 포함해주세요.
                             """
                             
-                            feedback_message = client.messages.create(
+                            feedback_response = openai.ChatCompletion.create(
                                 model=model_choice,
-                                max_tokens=300,
-                                temperature=0.7,
                                 messages=[{
+                                    "role": "system",
+                                    "content": "당신은 전문적인 문서 분석가입니다. 간결하고 구체적인 피드백을 제공합니다."
+                                }, {
                                     "role": "user",
                                     "content": section_prompt
-                                }]
+                                }],
+                                max_tokens=300,
+                                temperature=0.7
                             )
                             
-                            section_feedback = feedback_message.content[0].text
+                            section_feedback = feedback_response.choices[0].message.content
                             
                             # 해당 섹션의 위치 찾기
                             section_start_text = section['content'][:100].strip()
@@ -595,9 +596,9 @@ st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: #888;'>
-        <p>Powered by Claude AI & Google Cloud | 교육 목적으로 제작됨</p>
+        <p>Powered by OpenAI GPT-4o-mini & Google Docs API | 교육 목적으로 제작됨</p>
         <p style='font-size: 0.8rem; margin-top: 0.5rem;'>
-            환경변수 설정: ANTHROPIC_API_KEY, GOOGLE_APPLICATION_CREDENTIALS
+            Streamlit Cloud에서 secrets.toml을 통해 API 키를 설정하세요
         </p>
     </div>
     """,
