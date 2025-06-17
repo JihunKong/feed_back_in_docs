@@ -507,7 +507,7 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                             
                         except Exception as e:
                             st.error(f"문서 분석 중 오류 발생: {str(e)}")
-                            return
+                            full_analysis = "분석을 수행할 수 없습니다."
                     
                     # 분석 결과 표시
                     st.markdown("📊 **문서 분석 결과**")
