@@ -203,10 +203,13 @@ def analyze_document_structure(full_text):
     # 제목 패턴 (숫자나 특수 문자로 시작하는 줄)
     title_patterns = [
         r'^\d+\.\s+',  # 1. 2. 3. 등
+        r'^\d+\.\d+\.?\s+',  # 1.1, 2.1 등 (세부 섹션)
+        r'^\d+\.\d+\.\d+\.?\s+',  # 1.1.1, 2.1.1 등 (더 세부 섹션)
         r'^\d+\)\s+',  # 1) 2) 3) 등
         r'^[IVX]+\.\s+',  # I. II. III. 등
         r'^\[.+\]\s*',  # [제목] 형식
         r'^#+\s+',  # # ## ### 마크다운 형식
+        r'^[\-\*]\s+\w+.*:',  # - 제목: 또는 * 제목: 형식
     ]
     
     lines = full_text.split('\n')
@@ -260,13 +263,13 @@ def analyze_document_structure(full_text):
         })
     
     # 섹션이 너무 많으면 내용을 기준으로 병합
-    if len(sections) > 10:
+    if len(sections) > 20:  # 20개 이상일 때만 병합
         merged_sections = []
         current_merged = sections[0]
         
         for section in sections[1:]:
-            # 짧은 섹션은 이전 섹션과 병합
-            if len(section['content'].strip()) < 200:
+            # 매우 짧은 섹션만 병합 (기준을 100자로 낮춤)
+            if len(section['content'].strip()) < 100:
                 current_merged['content'] += '\n\n' + section['content']
                 current_merged['end_line'] = section['end_line']
             else:
@@ -275,6 +278,34 @@ def analyze_document_structure(full_text):
         
         merged_sections.append(current_merged)
         sections = merged_sections
+    
+    # 섹션이 너무 적으면 내용을 기준으로 분할
+    if len(sections) < 6:
+        # 각 섹션을 내용 길이를 기준으로 분할
+        new_sections = []
+        for section in sections:
+            content = section['content']
+            paragraphs = content.split('\n\n')
+            
+            # 문단이 충분히 많으면 분할
+            if len(paragraphs) > 3:
+                mid = len(paragraphs) // 2
+                new_sections.append({
+                    'title': section['title'] + ' (전반부)',
+                    'content': '\n\n'.join(paragraphs[:mid]),
+                    'start_line': section['start_line'],
+                    'end_line': section['start_line'] + mid
+                })
+                new_sections.append({
+                    'title': section['title'] + ' (후반부)',
+                    'content': '\n\n'.join(paragraphs[mid:]),
+                    'start_line': section['start_line'] + mid,
+                    'end_line': section['end_line']
+                })
+            else:
+                new_sections.append(section)
+        
+        sections = new_sections
     
     return sections
 
@@ -519,11 +550,13 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                     # 첨삭 내용을 삽입할 위치 계산 (역순으로 삽입해야 인덱스가 꼬이지 않음)
                     feedback_insertions = []
                     
-                    # 작지만 의미 있는 섹션들을 필터링
-                    meaningful_sections = [s for s in sections if len(s['content'].strip()) > 200]
+                    # 작지만 의미 있는 셉션들을 필터링 (기준을 50자로 낮춤)
+                    meaningful_sections = [s for s in sections if len(s['content'].strip()) > 50]
                     
-                    # 상위 5-7개 섹션에만 피드백 추가
-                    sections_to_feedback = meaningful_sections[:min(7, len(meaningful_sections))]
+                    # 최대 10개 섹션에 피드백 추가
+                    sections_to_feedback = meaningful_sections[:min(10, len(meaningful_sections))]
+                    
+                    st.info(f"📋 총 {len(sections)}개 섹션 발견, {len(sections_to_feedback)}개 섹션에 첨삭 예정")
                     
                     # 먼저 모든 피드백을 생성하고 위치 파악
                     for idx, section in enumerate(sections_to_feedback):
@@ -600,7 +633,7 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                         st.markdown(f"""
                         <div class='success-box'>
                         <h4>✅ 첨삭 완료!</h4>
-                        <p>총 {feedback_added}개의 파란색 첨삭 내용이 문서에 삽입되었습니다.</p>
+                        <p>총 {len(sections)}개 섹션 중 {feedback_added}개 섹션에 파란색 첨삭 내용이 삽입되었습니다.</p>
                         <p>Google Docs에서 파란색으로 표시된 첨삭 내용을 확인하세요!</p>
                         </div>
                         """, unsafe_allow_html=True)
