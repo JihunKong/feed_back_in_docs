@@ -82,7 +82,7 @@ st.markdown("""
 
 # 타이틀
 st.markdown('<h1 class="main-header">📝 AI 문서 피드백 시스템</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Google Docs 문서에 AI가 댓글로 상세한 피드백을 제공합니다</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">Google Docs 문서에 AI가 파란색으로 첨삭 피드백을 제공합니다</p>', unsafe_allow_html=True)
 
 # 사용법 안내
 with st.expander("📖 사용법 안내", expanded=True):
@@ -95,7 +95,7 @@ with st.expander("📖 사용법 안내", expanded=True):
     <li>피드백을 받고 싶은 Google Docs 문서를 준비합니다</li>
     <li>문서를 열고 우측 상단의 '공유' 버튼을 클릭합니다</li>
     <li>'링크 복사'를 클릭하거나, 특정 사용자에게 '편집자' 권한을 부여합니다</li>
-    <li><b>중요:</b> 이 앱의 서비스 계정에 '편집자' 권한이 있어야 댓글을 달 수 있습니다</li>
+    <li><b>중요:</b> 이 앱의 서비스 계정에 '편집자' 권한이 있어야 문서를 편집할 수 있습니다</li>
     </ul>
     </div>
     
@@ -112,8 +112,8 @@ with st.expander("📖 사용법 안내", expanded=True):
     <b>3단계: 피드백 요청</b>
     <ul>
     <li>Google Docs URL을 입력하고 '피드백 요청' 버튼을 클릭합니다</li>
-    <li>AI가 문서를 분석하고 각 섹션에 댓글로 피드백을 추가합니다</li>
-    <li>Google Docs에서 직접 댓글을 확인할 수 있습니다</li>
+    <li>AI가 문서를 분석하고 적절한 위치에 파란색으로 첨삭 내용을 삽입합니다</li>
+    <li>Google Docs에서 파란색으로 표시된 첨삭 내용을 확인할 수 있습니다</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -295,28 +295,45 @@ def analyze_document_structure(full_text):
     
     return sections
 
-def add_comment_to_doc(service, document_id, content, start_index, end_index):
-    """Google Docs에 댓글 추가"""
+def insert_feedback_to_doc(service, document_id, feedback_text, insert_index):
+    """Google Docs에 파란색으로 첨삭 내용 삽입"""
     try:
-        # 댓글 추가를 위한 요청
-        requests = [{
-            'createComment': {
-                'comment': {
-                    'content': content,
-                    'anchor': {
-                        'segmentId': '',
-                        'start': {
-                            'segmentId': '',
-                            'index': start_index
+        # 첨삭 내용을 파란색으로 삽입하기 위한 요청
+        requests = [
+            {
+                'insertText': {
+                    'location': {
+                        'index': insert_index
+                    },
+                    'text': f'\n[첨삭: {feedback_text}]\n'
+                }
+            },
+            {
+                'updateTextStyle': {
+                    'range': {
+                        'startIndex': insert_index,
+                        'endIndex': insert_index + len(f'\n[첨삭: {feedback_text}]\n')
+                    },
+                    'textStyle': {
+                        'foregroundColor': {
+                            'color': {
+                                'rgbColor': {
+                                    'red': 0.0,
+                                    'green': 0.0,
+                                    'blue': 1.0
+                                }
+                            }
                         },
-                        'end': {
-                            'segmentId': '',
-                            'index': end_index
+                        'italic': True,
+                        'fontSize': {
+                            'magnitude': 10,
+                            'unit': 'PT'
                         }
-                    }
+                    },
+                    'fields': 'foregroundColor,italic,fontSize'
                 }
             }
-        }]
+        ]
         
         service.documents().batchUpdate(
             documentId=document_id,
@@ -326,12 +343,12 @@ def add_comment_to_doc(service, document_id, content, start_index, end_index):
         return True
     except HttpError as e:
         if e.resp.status == 403:
-            st.error("❌ 문서에 댓글을 추가할 권한이 없습니다. 문서에 '편집자' 권한을 부여해주세요.")
+            st.error("❌ 문서를 편집할 권한이 없습니다. 문서에 '편집자' 권한을 부여해주세요.")
         else:
-            st.error(f"댓글 추가 중 오류 발생: {str(e)}")
+            st.error(f"첨삭 내용 삽입 중 오류 발생: {str(e)}")
         return False
     except Exception as e:
-        st.error(f"댓글 추가 중 오류 발생: {str(e)}")
+        st.error(f"첨삭 내용 삽입 중 오류 발생: {str(e)}")
         return False
 
 # 문서 타입과 피드백 초점 옵션
@@ -428,7 +445,7 @@ with st.expander("💡 테스트용 예시 문서"):
     
     https://docs.google.com/document/d/1DMTbJjOafh-guixzR6uagAWNwOhM1oAI0M_QMPwWpFM/edit?tab=t.0#heading=h.2lzghcnx3r3a
     
-    **주의:** 이 문서에 편집자 권한을 부여해야 댓글 기능이 작동합니다.
+    **주의:** 이 문서에 편집자 권한을 부여해야 첨삭 기능이 작동합니다.
     """)
 
 # 피드백 요청 버튼
@@ -516,19 +533,20 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
-                    # 주요 섹션에 피드백 추가
-                    comments_added = 0
+                    # 첨삭 내용을 삽입할 위치 계산 (역순으로 삽입해야 인덱스가 꼬이지 않음)
+                    feedback_insertions = []
                     
                     # 작지만 의미 있는 섹션들을 필터링
                     meaningful_sections = [s for s in sections if len(s['content'].strip()) > 200]
                     
                     # 상위 5-7개 섹션에만 피드백 추가
-                    sections_to_comment = meaningful_sections[:min(7, len(meaningful_sections))]
+                    sections_to_feedback = meaningful_sections[:min(7, len(meaningful_sections))]
                     
-                    for idx, section in enumerate(sections_to_comment):
-                        progress = (idx + 1) / len(sections_to_comment)
+                    # 먼저 모든 피드백을 생성하고 위치 파악
+                    for idx, section in enumerate(sections_to_feedback):
+                        progress = (idx + 1) / (len(sections_to_feedback) * 2)  # 분석은 전체의 50%
                         progress_bar.progress(progress)
-                        status_text.text(f"🤖 '{section['title'][:30]}...' 섹션에 피드백 추가 중...")
+                        status_text.text(f"🤖 '{section['title'][:30]}...' 섹션 분석 중...")
                         
                         try:
                             # 해당 섹션에 대한 구체적인 피드백
@@ -545,7 +563,7 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                                 model=model_choice,
                                 messages=[{
                                     "role": "system",
-                                    "content": "당신은 전문적인 문서 분석가입니다. 간결하고 구체적인 피드백을 제공합니다."
+                                    "content": "당신은 전문적인 문서 첨삭 전문가입니다. 간결하고 구체적인 피드백을 제공합니다."
                                 }, {
                                     "role": "user",
                                     "content": section_prompt
@@ -560,34 +578,54 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                             section_start_text = section['content'][:100].strip()
                             for para in content_with_positions:
                                 if section_start_text in para['text']:
-                                    if add_comment_to_doc(docs_service, document_id, 
-                                                        section_feedback, 
-                                                        para['start'], para['end']):
-                                        comments_added += 1
+                                    # 섹션 끝 위치에 피드백 삽입 예약
+                                    feedback_insertions.append({
+                                        'index': para['end'],
+                                        'feedback': section_feedback,
+                                        'section_title': section['title']
+                                    })
                                     break
                             
                             # API 호출 제한을 위한 짧은 대기
                             time.sleep(1)
                             
                         except Exception as e:
-                            st.warning(f"섹션 '{section['title'][:30]}...' 피드백 추가 중 오류: {str(e)}")
+                            st.warning(f"섹션 '{section['title'][:30]}...' 분석 중 오류: {str(e)}")
+                    
+                    # 역순으로 정렬 (뒤에서부터 삽입해야 인덱스가 변하지 않음)
+                    feedback_insertions.sort(key=lambda x: x['index'], reverse=True)
+                    
+                    # 첨삭 내용 삽입
+                    feedback_added = 0
+                    for i, insertion in enumerate(feedback_insertions):
+                        progress = 0.5 + (i + 1) / (len(feedback_insertions) * 2)  # 삽입은 나머지 50%
+                        progress_bar.progress(progress)
+                        status_text.text(f"🖍️ '{insertion['section_title'][:30]}...' 섹션에 첨삭 내용 삽입 중...")
+                        
+                        if insert_feedback_to_doc(docs_service, document_id, 
+                                                insertion['feedback'], 
+                                                insertion['index']):
+                            feedback_added += 1
+                        
+                        # API 호출 제한을 위한 짧은 대기
+                        time.sleep(0.5)
                     
                     progress_bar.progress(1.0)
                     status_text.text("✅ 분석 완료!")
                     
-                    if comments_added > 0:
+                    if feedback_added > 0:
                         st.markdown(f"""
                         <div class='success-box'>
-                        <h4>✅ 피드백 완료!</h4>
-                        <p>총 {comments_added}개의 댓글이 문서에 추가되었습니다.</p>
-                        <p>Google Docs에서 댓글을 확인하세요!</p>
+                        <h4>✅ 첨삭 완료!</h4>
+                        <p>총 {feedback_added}개의 파란색 첨삭 내용이 문서에 삽입되었습니다.</p>
+                        <p>Google Docs에서 파란색으로 표시된 첨삭 내용을 확인하세요!</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
                         # 문서 링크 제공
                         st.markdown(f"[📄 Google Docs에서 열기](https://docs.google.com/document/d/{document_id}/edit)")
                     else:
-                        st.warning("⚠️ 댓글을 추가하지 못했습니다. 문서 권한을 확인해주세요.")
+                        st.warning("⚠️ 첨삭 내용을 추가하지 못했습니다. 문서 권한을 확인해주세요.")
                 else:
                     st.error("❌ 문서 내용을 가져올 수 없습니다. 문서 권한을 확인해주세요.")
 
