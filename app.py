@@ -123,42 +123,25 @@ with st.expander("📖 사용법 안내", expanded=True):
 def get_google_service():
     """Google Docs 서비스 인스턴스 생성"""
     try:
-        # Google Cloud 인증 방식
-        # 1. 환경 변수에서 서비스 계정 키 경로 확인
-        credentials_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-        
-        if credentials_path and os.path.exists(credentials_path):
-            # 서비스 계정 키 파일 사용
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_path,
-                scopes=[
-                    'https://www.googleapis.com/auth/documents',
-                    'https://www.googleapis.com/auth/drive.file'
-                ]
-            )
-        elif st.secrets.get("google_service_account"):
-            # Streamlit secrets 사용 (기존 방식 유지)
+        # Streamlit secrets에서 가져오기 (Streamlit Cloud 우선)
+        if "google_service_account" in st.secrets:
             service_account_info = st.secrets["google_service_account"]
-            credentials = service_account.Credentials.from_service_account_info(
+            
+            # 문서 편집을 위해 drive.file 권한 추가
+            creds = Credentials.from_service_account_info(
                 service_account_info,
                 scopes=[
                     'https://www.googleapis.com/auth/documents',
                     'https://www.googleapis.com/auth/drive.file'
                 ]
             )
+            
+            service = build('docs', 'v1', credentials=creds)
+            drive_service = build('drive', 'v3', credentials=creds)
+            return service, drive_service
         else:
-            # 기본 인증 시도 (Google Cloud 환경에서 자동 인증)
-            credentials = service_account.Credentials.from_service_account_info(
-                {},
-                scopes=[
-                    'https://www.googleapis.com/auth/documents',
-                    'https://www.googleapis.com/auth/drive.file'
-                ]
-            )
-        
-        service = build('docs', 'v1', credentials=credentials)
-        drive_service = build('drive', 'v3', credentials=credentials)
-        return service, drive_service
+            st.error("⚠️ Google 서비스 계정 인증 정보가 필요합니다. Streamlit Cloud에서 secrets를 설정해주세요.")
+            return None, None
     except Exception as e:
         st.error(f"Google 서비스 초기화 실패: {str(e)}")
         return None, None
