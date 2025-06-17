@@ -234,6 +234,22 @@ def analyze_document_structure(full_text):
         if not is_title and line.strip().isupper() and len(line.strip()) < 50:
             is_title = True
         
+        # 콜론으로 끝나는 짧은 줄도 제목으로 간주 (예: "서론:", "결론:" 등)
+        if not is_title and line.strip().endswith(':') and len(line.strip()) < 50:
+            is_title = True
+        
+        # 가로, 대괄호로 시작하는 줄도 제목으로 간주
+        if not is_title and (line.strip().startswith('(') or line.strip().startswith('【')):
+            is_title = True
+        
+        # "목차", "서론", "본론", "결론", "참고문헌", "부록" 등의 키워드로 시작하는 줄
+        keywords = ['목차', '서론', '본론', '결론', '참고문헌', '부록', '요약', '개요', '서문']
+        if not is_title:
+            for keyword in keywords:
+                if line.strip().startswith(keyword):
+                    is_title = True
+                    break
+        
         if is_title:
             # 이전 섹션 저장
             if current_section['content']:
@@ -550,11 +566,11 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                     # 첨삭 내용을 삽입할 위치 계산 (역순으로 삽입해야 인덱스가 꼬이지 않음)
                     feedback_insertions = []
                     
-                    # 작지만 의미 있는 셉션들을 필터링 (기준을 50자로 낮춤)
-                    meaningful_sections = [s for s in sections if len(s['content'].strip()) > 50]
+                    # 작지만 의미 있는 섹션들을 필터링 (기준을 30자로 더 낮춤)
+                    meaningful_sections = [s for s in sections if len(s['content'].strip()) > 30]
                     
-                    # 최대 10개 섹션에 피드백 추가
-                    sections_to_feedback = meaningful_sections[:min(10, len(meaningful_sections))]
+                    # 최대 12개 섹션에 피드백 추가 (더 많은 섹션 포함)
+                    sections_to_feedback = meaningful_sections[:min(12, len(meaningful_sections))]
                     
                     st.info(f"📋 총 {len(sections)}개 섹션 발견, {len(sections_to_feedback)}개 섹션에 첨삭 예정")
                     
@@ -571,20 +587,22 @@ if st.button("🚀 피드백 요청", type="primary", use_container_width=True):
                             
                             {section['content'][:1000]}...
                             
-                            이 섹션에 대해 구체적이고 건설적인 피드백을 2-3문장으로 제공해주세요.
-                            개선 방향이나 구체적인 예시를 포함해주세요.
+                            이 섹션에 대해 긍정적인 측면과 개선할 점을 모두 포함하여 피드백을 제공해주세요.
+                            1) 먼저 잘 쓴 부분을 칭찬하고
+                            2) 개선할 점이 있다면 구체적인 예시나 방향을 제시해주세요.
+                            전체 3-4문장으로 작성하세요.
                             """
                             
                             feedback_response = openai.ChatCompletion.create(
                                 model=model_choice,
                                 messages=[{
                                     "role": "system",
-                                    "content": "당신은 전문적인 문서 첨삭 전문가입니다. 간결하고 구체적인 피드백을 제공합니다."
+                                    "content": "당신은 전문적인 문서 첨삭 전문가입니다. 긍정적인 측면과 개선할 점을 균형 있게 제공하되, 항상 격려하며 건설적인 피드백을 제공합니다. 모든 피드백은 한국어로 작성하세요."
                                 }, {
                                     "role": "user",
                                     "content": section_prompt
                                 }],
-                                max_tokens=300,
+                                max_tokens=400,
                                 temperature=0.7
                             )
                             
